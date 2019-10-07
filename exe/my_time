@@ -1,0 +1,122 @@
+#!/usr/bin/env ruby
+
+lib = File.expand_path('lib', __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+
+require 'bundler/setup'
+require 'sqlite3'
+require 'my_time'
+require 'date'
+require 'csv'
+
+options = {}
+
+ARGV.select do |arg|
+  arg.match(/^--/)
+end.each do |arg|
+  parts = arg.split('--').last.split('=')
+  options[parts.first] = parts.last
+end
+
+database = options.fetch('database')
+action = options.fetch('action')
+
+if action != 'export-csv'
+  puts "Usage: #{File.basename(__FILE__)} --database=[path] --action={action}"
+  puts "--action - export-csv"
+
+  exit 1
+end
+
+tables = [
+  'ZCALL', # name
+  'ZRETURNVISIT',
+  # 'ZADDITIONALINFORMATION',
+  # 'ZSORTER',
+  # 'ZADDITIONALINFORMATIONTYPE',
+  # 'ZSTATISTICSADJUSTMENT',
+  # 'ZBULKPLACEMENT',
+  # 'ZTERRITORY',
+  # 'ZTERRITORYHOUSE',
+  # 'ZDISPLAYRULE',
+  # 'ZTERRITORYHOUSEATTEMPT',
+  # 'ZFILTER',
+  # 'ZTERRITORYSTREET',
+  # 'ZMULTIPLECHOICE',
+  # 'ZTIMEENTRY',
+  # 'ZPICTURE',
+  # 'ZTIMETYPE',
+  # 'ZPRESENTATION',
+  # 'ZUSER',
+  # 'ZPUBLICATION',
+  # 'Z_METADATA',
+  # 'Z_MODELCACHE',
+  # 'ZSETTINGS',
+  # 'Z_PRIMARYKEY',
+]
+
+db = SQLite3::Database.new(database)
+db.results_as_hash = true
+
+# calls = db.execute("SELECT * FROM ZCALL")
+# infos = db.execute("SELECT * FROM ZADDITIONALINFORMATION")
+#
+#
+# p infos.count
+
+# Search for a text within fields
+#
+# tables.each do |table|
+#   puts "Table: #{table}"
+#   rows = db.execute("SELECT * FROM #{table}")
+#   rows.each do |row|
+#     if row.values.join(" ").match(/Somos sempre/)
+#       puts "FOOOOOOOOOOOOOOOOOOOUND"
+#     end
+#   end
+# end
+
+# tables.each do |table|
+#   puts "Table: #{table} ------------------"
+#   puts ""
+#   rows = db.execute("SELECT * FROM #{table}")
+#   rows.last(5).each do |row|
+#     puts ""
+#     p row
+#     puts ""
+#   end
+# end
+
+sql =  <<~SQL
+  SELECT * FROM ZCALL c
+  LEFT JOIN ZRETURNVISIT r ON c.Z_PK = r.ZCALL
+SQL
+
+calls = db.execute(sql).map do |call|
+  MyTime::Call.new(call)
+end
+
+# calls.each do |call|
+#   puts <<~CALL
+#     -----------------------------------------------------
+#
+#     Nome: "#{call.name}"
+#     Endereço: "#{call.address}"
+#     Notas: #{call.notes}
+#     Data: #{call.date.strftime('%d/%m/%Y')}
+#
+#     #{call}
+#
+#   CALL
+# end
+
+csv_string = CSV.generate(col_sep: ',') do |csv|
+  csv << ['Data', 'Nome', 'Endereço', 'Notas']
+
+  calls.reject(&:deleted?).each do |call|
+    csv << [call.date.strftime('%d/%m'), call.name, call.address, call.notes]
+    # p call
+  end
+end
+
+puts csv_string
